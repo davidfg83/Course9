@@ -1,0 +1,70 @@
+---
+title: "Energy Use by Country in 2021"
+author: "David Gonzalez"
+date: "2027-05-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The interactive map at the bottom of this page displays a cross-country comparison of primary energy consumption per person (measured in KWh) for the year of 2021. 
+
+To create it, I used the following libraries:
+
+```{r libraries, eval = FALSE}
+library(sf)
+library(leaflet)
+library(tidyverse)
+```
+
+The code below loads the two data sources (one for the polygonal shapes overlaying the countries, the other with the energy consumption data).
+
+```{r download data, eval = FALSE}
+# Downloading the map data
+temp_shapefile <- tempfile()
+download.file("https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/world-administrative-boundaries/exports/shp?lang=en&timezone=Europe%2FLondon", temp_shapefile)
+unzip(temp_shapefile)
+worldmap <- st_read("world-administrative-boundaries.shp")
+
+# Reading the energy data (from https://ourworldindata.org/energy-production-consumption) and select 2021 for analysis
+energy <- read_csv("per-capita-energy-use.csv")
+energy2021 <- energy[energy$Year == 2021,]
+energy2021 <- energy2021[!is.na(energy2021$Code),]
+
+# Rename variables
+energy2021 <- energy2021 %>% rename(consumption = `Primary energy consumption per capita (kWh/person)`, iso3 = Code)
+# Round consumption to whole number (kWh/person)
+energy2021$consumption <- round(energy2021$consumption, 0)
+
+#Use a left join to add consumption to world map
+worldmap <- left_join(worldmap, energy2021 %>% select(iso3, consumption), by = "iso3")
+
+```
+
+Finally, the code below creates the interactive graph.
+
+```{r create graph}
+
+# followed https://r-graph-gallery.com/183-choropleth-map-with-leaflet.html
+
+#create color palette with user-specified bins
+library(RColorBrewer)
+bins <- c(0, 1000, 3000, 10000, 30000, 100000, Inf)
+mypalette <- colorBin(palette = "YlOrBr", domain = worldmap$consumption, na.color = "transparent", bins = bins)
+
+#prepare text for tooltips: first, create a list of text to be displayed for each country using paste (note the use of <br/> introduce second line, and the format formula adds comma separators), then lappy marks each element of list as HTML
+mytext <- paste(worldmap$name, "<br/>", "Primary Energy Consumption (kWh/person): ", format(worldmap$consumption, big.mark = ",", scientific = FALSE), sep ="") %>% lapply(htmltools::HTML)
+
+
+# create map
+map <- leaflet(worldmap) %>% addTiles() %>% setView (lat = 10, lng = 0, zoom = 1.5) %>% addPolygons(fillColor = ~ mypalette(consumption), stroke = TRUE, fillOpacity = 0.9, color = "white", weight = 0.3, label = mytext, labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"), textsize = "13px", direction = "auto")) %>% addLegend(pal = mypalette, values = ~consumption, opacity = 0.9, title = "Primary Energy Consumption (kWh/person)", position = "bottomleft")
+
+map
+```
+
+```{r, echo = FALSE, eval = FALSE}
+## how to render markdown without running all the code: type rmarkdown::render("Energy.Rmd") at the console
+## how to create a page: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+```
