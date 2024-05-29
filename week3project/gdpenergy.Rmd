@@ -1,0 +1,74 @@
+---
+title: "Energy Use, Economic Activity and Manufacturing (2021)"
+author: "David Gonzalez"
+date: "2024-05-29"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Was energy use per capita correlated with economic activity and manufacturing across countries in 2021?
+
+- 2021 chosen because of wide availability of data across countries
+- For a quick look at the answer, gathered data from:
+        - the [World Bank] (https://databank.worldbank.org/source/world-development-indicators#) on GDP per capita and Value Added per capita in the Manufacturing Sector
+        - [Our World in Data] (https://ourworldindata.org/energy-production-consumption) on energy use per capita (in kWh for the year)
+        - [Open data soft] (https://public.opendatasoft.com/explore/?sort=modified) on regions to which countries belong
+
+```{r libraries}
+library(sf)
+library(tidyverse)
+library(plotly)
+```
+
+```{r load data}
+# load world map data with regions
+worldmap <- as_tibble(st_read("world-administrative-boundaries.shp"))[,-9]
+
+# Load the energy data (from https://ourworldindata.org/energy-production-consumption) and select 2021 for analysis
+energy <- read_csv("per-capita-energy-use.csv")
+energy2021 <- energy[energy$Year == 2021,]
+energy2021 <- energy2021[!is.na(energy2021$Code),]
+# Rename energy variables
+energy2021 <- energy2021 %>% rename(consumption = `Primary energy consumption per capita (kWh/person)`, iso3 = Code)
+# Round consumption to whole number (kWh/person)
+energy2021$consumption <- round(energy2021$consumption, 0)
+
+## Load the GDP, manufacturing, and population data (from https://databank.worldbank.org/source/world-development-indicators#)
+econdata <- read_csv("wbdata.csv", n_max = 266)
+econdata <- econdata %>% select(-1,-2)
+#Rename econ variables
+econdata <- econdata %>% rename(iso3 = names(econdata)[2], gdppc = names(econdata)[3], manuf.va = names(econdata)[4], population = names(econdata)[5])
+#Change last three columns to numeric
+econdata <- econdata %>% mutate(across(c(3:5), as.numeric))
+#Calculate manufacturing value added per capita
+econdata <- econdata %>% mutate(manuf.va.pc = manuf.va/population) 
+
+## Create the database
+temp <- inner_join(worldmap %>% select(name, iso3, continent, region) ,energy2021 %>% select(iso3, consumption), by = "iso3")
+df <- inner_join(temp, econdata %>% select(-1), by = "iso3")
+df <- df %>% drop_na()
+
+```
+
+## GDP per capita vs Energy Consumption
+```{r}
+# Create bins for log of manufacturing 
+df$manuf.bins <- cut(log(df$manuf.va.pc), breaks = 5, labels = c("Very Low", "Low", "Medium", "High", "Very High"))
+
+# plot graph
+plot_ly(df, x = ~log(gdppc), y = ~log(consumption), text = ~paste(name, "<br>GDP per Capita (current USD): ", round(gdppc,0), "<br>Energy consumption (kWh/person): ", consumption, "<br> Value Added in Manuf pc (current USD) ", round(manuf.va.pc,0)), color = ~manuf.bins, type = "scatter", mode = "markers", hoverinfo = "text") %>% layout(xaxis = list(title = "Log of GDP per capita"), yaxis = list(title = " Log of Primary Energy Consumption per capita"), legend = list(title = list(text = "Level of Value Added by Manufacturing")))
+```
+
+
+
+## Value Added by Manufacturing vs Energy Consumption
+```{r}
+# Create bins for log of gdppc
+df$gdp.bins <- cut(log(df$gdppc), breaks = 5, labels = c("Very Low", "Low", "Medium", "High", "Very High"))
+
+plot_ly(df, x = ~log(manuf.va.pc), y = ~log(consumption), text = ~paste(name, "<br>GDP per Capita (current USD): ", round(gdppc,0), "<br>Energy consumption (kWh/person): ", consumption, "<br> Value Added in Manuf pc (current USD) ", round(manuf.va.pc,0)), color = ~gdp.bins, type = "scatter", mode = "markers", hoverinfo = "text") %>% layout(xaxis = list(title = "Log of Value Added in the Manufacturing Sector per capita"), yaxis = list(title = "Log of Primary Energy Consumption per capita (kWh/person)"), legend = list(title = list(text = "Level of GDPpc")))
+```
+
