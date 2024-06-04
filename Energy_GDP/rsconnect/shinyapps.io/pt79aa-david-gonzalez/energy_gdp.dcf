@@ -1,0 +1,10 @@
+name: energy_gdp
+title:
+username: pt79aa-david-gonzalez
+account: pt79aa-david-gonzalez
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12123752
+bundleId: 8700070
+url: https://pt79aa-david-gonzalez.shinyapps.io/energy_gdp/
+version: 1
