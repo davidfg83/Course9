@@ -1,0 +1,98 @@
+---
+title: "Energy Consumption per Dollar of GDP - An Interactive Shiny Map App"
+author: "David Gonzalez"
+date: "2024-06-05"
+output: 
+        ioslides_presentation:
+                theme: cerulean
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction: What is the app about?
+
+- An interactive tool to visualize energy intensity, measured as energy consumption per dollar of GDP
+- Useful for understanding the energy intensity of different countries' productive processes.
+- Allows quick comparisons across countries and over time.
+
+## Key Features: Why use this app?
+
+- **Interactive Maps:** Explore data visually - color identifies energy intensity by discrete level; hovering shows exact value.
+- **Year Selector:** Analyze changes over time.
+- **Country Comparisons:** Compare energy intensity across nations.
+
+## Snapshot: Energy Intensity in 2021
+
+```{r, echo = FALSE, eval = FALSE}
+library(sf)
+library(leaflet)
+library(tidyverse)
+library(shiny)
+library(RColorBrewer)
+
+## load the map data
+temp_shapefile <- tempfile()
+download.file("https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/world-administrative-boundaries/exports/shp?lang=en&timezone=Europe%2FLondon", temp_shapefile)
+unzip(temp_shapefile)
+worldmap <- st_read("world-administrative-boundaries.shp")
+worldmap <- worldmap[,-c(2,3,7,8)]
+#rename variables
+worldmap <- worldmap %>% rename(country = name)
+
+## Reading the energy data (from https://ourworldindata.org/energy-production-consumption)
+energy <- read_csv("primary-energy-cons.csv")[,-1]
+#rename variables
+energy <- energy %>% rename (iso3 = names(energy)[1], year = names(energy)[2], consumption = names(energy)[3])
+
+## Reading the GDP data
+gdp <- read_csv("gdp.csv", n_max = 11704)[,-c(2,3)]
+#Rename econ variables
+gdp <- gdp %>% rename(year = names(gdp)[1], iso3 = names(gdp)[2], gdp = names(gdp)[3])
+# change gdp variable to numeric
+gdp$gdp <- as.numeric(gdp$gdp)
+
+#Merge energy and GDP data
+temp <- inner_join(gdp, energy, by = c("iso3", "year"))
+# convert energy consumption from TWh to Wh
+temp$consumption <- temp$consumption * 1000000000000
+# assign NA to observations with 0 consumption
+temp$consumption[temp$consumption==0] <- NA
+# calculate watt.gdp as number of watts used per dollar of gdp
+temp <- temp %>% mutate(watt.gdp = round(consumption/gdp, 0))
+
+#create dataset for analysis of 2021
+temp_2021 <- temp %>% filter(year == 2021)
+data_2021 <- left_join(worldmap, temp_2021, by = "iso3")
+
+#create color palette with user-specified bins
+                bins <- c(0, 1000, 2000, 3000, 5000, Inf)
+                mypalette <- colorBin(palette = "YlOrBr", domain = data_2021$watt.gdp, na.color = "transparent", bins = bins)
+                
+                #prepare text for tooltips: first, create a list of text to be displayed for each country using paste (note the use of <br/> introduce second line, and the format formula adds comma separators), then lappy marks each element of list as HTML
+                mytext <- paste(data_2021$country, "<br/>", "Wh/GDP: ", format(data_2021$watt.gdp, big.mark = ",", scientific = FALSE), sep ="") %>% lapply(htmltools::HTML)
+                
+
+```
+
+
+```{r}
+map<- leaflet(data_2021) %>% addTiles() %>% setView(lat = 10, lng = 0, zoom = 1) %>% 
+        addPolygons(fillColor = ~ mypalette(watt.gdp), stroke = TRUE, 
+                    fillOpacity = 0.9, color = "white", weight = 0.3, 
+                    label = mytext, labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"), textsize = "13px", direction = "auto")) %>% 
+        addLegend(pal = mypalette, values = ~watt.gdp, opacity = 0.9, 
+                      title = "Primary Energy Consumption (kWh/person)", position = "bottomleft")
+```
+
+
+```{r, echo = FALSE}
+map
+```
+## Who can benefit?
+
+- **Students, Teachers, and General Public** Get a first glance at trends and international differences in energy intensity.
+- **Researchers:** Obtain inspiration for research ideas.
+- **Businesses:** Identify regions with efficient energy use.
+- Try the app now and start learning about energy intensity!
+
